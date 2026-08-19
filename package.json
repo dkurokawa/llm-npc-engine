@@ -1,0 +1,20 @@
+{
+  "name": "llm-npc-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A data-driven engine for NPCs that talk through an LLM while the game's progression stays decided in code.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "play": "node src/cli/play.ts",
+    "test": "node --test 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

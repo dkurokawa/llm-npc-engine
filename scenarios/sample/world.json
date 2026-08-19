@@ -1,0 +1,56 @@
+{
+  "title": "宿場町の失踪",
+  "synopsis": "街道沿いの宿場町エルデン。昨夜泊まった旅人が、朝には姿を消していた。",
+
+  "common_knowledge": [
+    "ここは街道沿いの宿場町「エルデン」である",
+    "昨夜は激しい雨が降っていた",
+    "旅人のトマスが昨夜「月影亭」に泊まり、今朝から姿が見えない"
+  ],
+
+  "facts": {
+    "saw_cloak": { "label": "黒いマントの男が泊まっていたと聞いた" },
+    "knows_departure": { "label": "その男が明け方に慌てて出て行ったと聞いた" },
+    "heard_alibi": { "label": "マーサが「ずっと店にいた」と話すのを聞いた" },
+    "found_receipt": { "label": "雨具の受取証を見つけた" },
+    "martha_confessed": { "label": "マーサが外出を認めた" },
+    "knows_debt": { "label": "マーサがトマスに借金をしていたと聞いた" }
+  },
+
+  "evidence": {
+    "receipt": {
+      "label": "雨具の受取証",
+      "description": "昨夜の日付が入っている。受取人の欄には「M」とだけ書かれていた。",
+      "acquired_by": ["found_receipt"]
+    }
+  },
+
+  "solutions": [
+    {
+      "id": "case_closed",
+      "label": "事件の真相",
+      "slots": [
+        {
+          "id": "culprit",
+          "question": "誰が",
+          "answer": "martha",
+          "options": ["gareth", "martha", "thomas"]
+        },
+        {
+          "id": "method",
+          "question": "どうやって",
+          "answer": "lured_out",
+          "options": ["lured_out", "poisoned_drink", "broke_in"]
+        },
+        {
+          "id": "motive",
+          "question": "なぜ",
+          "answer": "debt",
+          "options": ["debt", "revenge", "jealousy"]
+        }
+      ],
+      "requires": ["martha_confessed", "knows_debt"],
+      "on_solved": "マーサは肩を落とした。「……あの人は、返せない額を貸してくれた。それが恐ろしかったんだ」"
+    }
+  ]
+}
