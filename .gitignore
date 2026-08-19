@@ -1,0 +1,27 @@
+# 機密・非公開データ（public 化時に履歴から掘られないよう、最初から除外する）
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# 本の内容・パスコード（このリポには持ち込まない。誤コミット防止の二重の壁）
+pass-*
+**/passcode*
+books/
+manuscript/
+
+# シナリオ実データ（公開するのは雛形のみ。本編シナリオは別管理）
+scenarios/private/
+*.private.json
+
+# モデル本体（数GB。配布しない）
+*.gguf
+*.safetensors
+models/
+
+# 一般
+node_modules/
+dist/
+.DS_Store
+*.log
