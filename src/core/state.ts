@@ -6,6 +6,7 @@
  * always gets the same verdict.
  */
 
+import { matchesAny } from "./match.ts";
 import type {
   EvidenceId,
   FactId,
@@ -47,6 +48,8 @@ export interface PresentVerdict {
 export class GameState {
   readonly scenario: Scenario;
   readonly #facts = new Set<FactId>();
+  /** Keyworded knowledge already disclosed, keyed as `npcId:knowledgeId`. */
+  readonly #disclosed = new Set<string>();
   /** Lies already told to the player, keyed as `npcId:lieId`. */
   readonly #liesTold = new Set<string>();
   /** Lies already broken, keyed as `npcId:lieId`. */
@@ -91,25 +94,18 @@ export class GameState {
   // --- knowledge disclosure ------------------------------------------------
 
   /**
-   * The subset of an NPC's knowledge the player has unlocked. Anything else is
-   * kept out of the prompt entirely rather than being guarded by an
-   * instruction, which is what keeps small models from leaking it.
+   * What belongs in this turn's prompt: background knowledge (no `keywords`),
+   * anything already disclosed in an earlier turn (an NPC does not forget what
+   * it already said), and anything whose `keywords` the player's current line
+   * just matched. `requires` still gates all three — see `docs/schema.md`.
    */
-  disclosableKnowledge(npc: Npc): Knowledge[] {
-    return npc.knowledge.filter((k) => this.hasAll(k.requires));
-  }
-
-  /**
-   * Marks an NPC's currently disclosable knowledge as heard, establishing the
-   * facts it grants. Called after a reply, since the model was free to use any
-   * of it.
-   */
-  recordDisclosure(npc: Npc): FactId[] {
-    const granted: FactId[] = [];
-    for (const k of this.disclosableKnowledge(npc)) {
-      granted.push(...this.grant(k.grants));
-    }
-    return granted;
+  promptKnowledge(npcId: NpcId, npc: Npc, playerLine: string): Knowledge[] {
+    return npc.knowledge.filter((k) => {
+      if (!this.hasAll(k.requires)) return false;
+      if (!k.keywords || k.keywords.length === 0) return true;
+      if (this.#disclosed.has(`${npcId}:${k.id}`)) return true;
+      return matchesAny(playerLine, k.keywords);
+    });
   }
 
   // --- lies ----------------------------------------------------------------
@@ -123,15 +119,36 @@ export class GameState {
     return this.#liesBroken.has(`${npcId}:${lieId}`);
   }
 
-  /** Records that the NPC has now told these lies to the player. */
-  recordLiesTold(npcId: NpcId, lies: readonly Lie[]): FactId[] {
+  /**
+   * Settles one turn of conversation: keyworded knowledge the player's line
+   * just matched becomes disclosed (sticky from here on), and an active lie
+   * whose keywords it matched counts as told. Nothing here reads what the
+   * model replied — only what the player asked determines what stuck.
+   *
+   * Call this only after the backend has actually answered; a failed turn
+   * should record nothing (see `src/core/dialogue.ts`).
+   */
+  recordTurn(npcId: NpcId, npc: Npc, playerLine: string): FactId[] {
     const granted: FactId[] = [];
-    for (const lie of lies) {
+
+    for (const k of npc.knowledge) {
+      if (!k.keywords || k.keywords.length === 0) continue;
+      if (!this.hasAll(k.requires)) continue;
+      const key = `${npcId}:${k.id}`;
+      if (this.#disclosed.has(key)) continue;
+      if (!matchesAny(playerLine, k.keywords)) continue;
+      this.#disclosed.add(key);
+      granted.push(...this.grant(k.grants));
+    }
+
+    for (const lie of this.activeLies(npcId, npc)) {
       const key = `${npcId}:${lie.id}`;
       if (this.#liesTold.has(key)) continue;
+      if (!matchesAny(playerLine, lie.keywords)) continue;
       this.#liesTold.add(key);
       granted.push(...this.grant(lie.grants_on_told));
     }
+
     return granted;
   }
 
@@ -181,6 +198,13 @@ export class GameState {
 
   solutionById(id: string): Solution | undefined {
     return this.scenario.world.solutions.find((s) => s.id === id);
+  }
+
+  /** Unsolved solutions whose `requires` currently hold — the ones worth offering the player. */
+  attemptableSolutions(): Solution[] {
+    return this.scenario.world.solutions.filter(
+      (s) => !this.isSolved(s.id) && this.hasAll(s.requires),
+    );
   }
 
   /**

@@ -73,11 +73,21 @@ export interface Persona {
 /**
  * One thing an NPC knows. Withheld from the prompt entirely until `requires`
  * holds, so a model that never received the text cannot leak it.
+ *
+ * Disclosure itself is decided by keyword match against the player's line,
+ * never by reading what the model actually said — see `src/core/match.ts`.
  */
 export interface Knowledge {
   id: string;
   content: string;
   requires: FactId[];
+  /**
+   * Substrings (after NFKC + lowercase normalization) that the player's line
+   * must contain for this to count as disclosed. Omitted, this is background
+   * knowledge: always in the prompt once `requires` holds, and it may not
+   * carry `grants` — there would be no turn at which to grant it.
+   */
+  keywords?: string[];
   /** Facts that start holding once this has been disclosed to the player. */
   grants?: FactId[];
 }
@@ -95,10 +105,16 @@ export interface LieBreak {
  */
 export interface Lie {
   id: string;
-  /** What subject triggers the lie, e.g. "昨夜どこにいたか". */
+  /** What subject triggers the lie, e.g. "昨夜どこにいたか". Prompt wording only. */
   topic: string;
   claim: string;
   truth: string;
+  /**
+   * Substrings (after NFKC + lowercase normalization) that the player's line
+   * must contain for the lie to count as told to them. Unlike `Knowledge`,
+   * this is never optional: a lie the player never asked about was never told.
+   */
+  keywords: string[];
   /** Facts that hold once the player has been told the lie. */
   grants_on_told?: FactId[];
   /** Evidence that collapses the lie when presented. */

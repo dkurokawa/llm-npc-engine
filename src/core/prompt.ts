@@ -6,6 +6,9 @@
  * not something the model has to be trusted to do. Likewise a lie's `truth` is
  * never sent: the model states the `claim` believing it, which is what makes
  * the lie sound unrehearsed on an 8B-class model.
+ *
+ * `playerLine` decides which keyworded knowledge unlocks *this* turn (see
+ * `GameState.promptKnowledge`) — the model's own output is never consulted.
  */
 
 import type { GameState } from "./state.ts";
@@ -13,8 +16,6 @@ import type { Lie, Npc, NpcId } from "./types.ts";
 
 export interface NpcPrompt {
   system: string;
-  /** Lies included in this prompt, so the caller can mark them as told. */
-  lies: Lie[];
 }
 
 /** A stage direction appended when evidence has just broken a lie. */
@@ -31,6 +32,7 @@ export function buildNpcPrompt(
   state: GameState,
   npcId: NpcId,
   npc: Npc,
+  playerLine: string,
 ): NpcPrompt {
   const { world } = state.scenario;
   const lines: string[] = [];
@@ -46,8 +48,9 @@ export function buildNpcPrompt(
     for (const c of world.common_knowledge) lines.push(`- ${c}`);
   }
 
-  // Only what the player has unlocked. Everything else is simply absent.
-  const known = state.disclosableKnowledge(npc);
+  // Only what the player has unlocked, plus whatever this line just asked
+  // about. Everything else is simply absent.
+  const known = state.promptKnowledge(npcId, npc, playerLine);
   if (known.length > 0) {
     lines.push("", "【あなたが知っていること】");
     for (const k of known) lines.push(`- ${k.content}`);
@@ -76,5 +79,5 @@ export function buildNpcPrompt(
     "- 上に書かれていないことを勝手に付け足さない",
   );
 
-  return { system: lines.join("\n"), lies };
+  return { system: lines.join("\n") };
 }

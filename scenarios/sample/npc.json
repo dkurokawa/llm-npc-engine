@@ -12,24 +12,28 @@
         "id": "cloak_man_stayed",
         "content": "昨夜、黒いマントを着た男が3号室に泊まった",
         "requires": [],
+        "keywords": ["昨夜", "客", "泊", "怪しい", "誰か", "マント"],
         "grants": ["saw_cloak"]
       },
       {
         "id": "left_at_dawn",
         "content": "その男は明け方、宿代も置かずに慌てて出て行った",
         "requires": ["saw_cloak"],
+        "keywords": ["出て", "出発", "いつ", "朝", "去", "行った"],
         "grants": ["knows_departure"]
       },
       {
         "id": "receipt_in_room",
         "content": "3号室の卓に、雨具の受取証が落ちていた。客が忘れていったものだろう",
         "requires": ["knows_departure"],
+        "keywords": ["部屋", "3号室", "忘れ", "残", "落ち"],
         "grants": ["found_receipt"]
       },
       {
         "id": "martha_owed_money",
         "content": "酒場の女将マーサが、失踪した旅人トマスから金を借りていたという噂がある",
         "requires": ["martha_confessed"],
+        "keywords": ["マーサ", "女将", "借", "金", "噂"],
         "grants": ["knows_debt"]
       }
     ],
@@ -59,6 +63,7 @@
         "id": "admits_debt",
         "content": "トマスから金を借りていた。返せる当てはなかった",
         "requires": ["martha_confessed"],
+        "keywords": ["借", "金", "トマス", "なぜ", "関係"],
         "grants": ["knows_debt"]
       }
     ],
@@ -69,6 +74,7 @@
         "topic": "昨夜どこにいたか",
         "claim": "昨夜はずっと店にいて、一歩も外に出ていない",
         "truth": "雨の中を出かけていて、雨具を借りるために受取証を切っていた",
+        "keywords": ["昨夜", "どこ", "外", "出かけ", "アリバイ"],
         "grants_on_told": ["heard_alibi"],
         "broken_by": ["receipt"],
         "on_broken": {
