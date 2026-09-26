@@ -2,10 +2,10 @@
 /**
  * A terminal front end for the engine.
  *
- * Deliberately thin: it reads a line, asks the backend for a reply, and prints
- * it. Every decision that matters — what an NPC may say, whether a lie falls,
- * whether the case is closed — happens in `src/core/`, so a browser front end
- * can replace this file without touching any of it.
+ * Deliberately thin: it reads a line, hands it to a `Dialogue`, and prints
+ * whatever comes back. Every decision that matters — what an NPC may say,
+ * whether a lie falls, whether the case is closed — happens in `src/core/`,
+ * so a browser front end can replace this file without touching any of it.
  *
  *   pnpm play [scenario-dir]
  */
@@ -14,11 +14,12 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
+import { Dialogue } from "../core/dialogue.ts";
 import { loadScenario, ScenarioError } from "../core/load.ts";
-import { brokenLieDirective, buildNpcPrompt } from "../core/prompt.ts";
+import { brokenLieDirective } from "../core/prompt.ts";
 import { GameState } from "../core/state.ts";
-import type { NpcId, Scenario } from "../core/types.ts";
-import { backendFromEnv, type ChatMessage } from "../llm/index.ts";
+import type { NpcId, Scenario, Solution } from "../core/types.ts";
+import { backendFromEnv } from "../llm/index.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SCENARIO = path.join(here, "..", "..", "scenarios", "sample");
@@ -50,17 +51,13 @@ async function main(): Promise<void> {
 
   const state = new GameState(scenario);
   const backend = backendFromEnv();
+  const dialogue = new Dialogue(state, backend);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   // Consumed as an async iterator rather than through rl.question(): with
   // piped input the stream ends while the first question is still awaited, and
   // question() would then drop every remaining buffered line. Iterating keeps
   // scripted playthroughs (demo recordings, smoke runs) intact.
   const lines = rl[Symbol.asyncIterator]();
-
-  /** Conversation history per NPC, so each remembers its own thread. */
-  const histories = new Map<NpcId, ChatMessage[]>();
-  /** A stage direction to attach to the next reply, set when a lie breaks. */
-  const pendingDirective = new Map<NpcId, string>();
 
   const npcIds = Object.keys(scenario.npcs);
   let current: NpcId = npcIds[0]!;
@@ -148,7 +145,7 @@ async function main(): Promise<void> {
       if (verdict.broken && verdict.lie) {
         // The confrontation resolved in code; the model is only told how to
         // act now that it has, never asked to judge the contradiction itself.
-        pendingDirective.set(current, brokenLieDirective(verdict.lie));
+        dialogue.setDirective(current, brokenLieDirective(verdict.lie));
         console.log(`  ${scenario.world.evidence[evidenceId]!.label}を突きつけた。`);
         announceFacts(verdict.granted);
         await speak(`これはどういうことだ。${scenario.world.evidence[evidenceId]!.label}がある。`);
@@ -176,56 +173,41 @@ async function main(): Promise<void> {
   // --- talking -------------------------------------------------------------
 
   async function speak(playerLine: string): Promise<void> {
-    const npc = scenario.npcs[current]!;
-    const { system, lies } = buildNpcPrompt(state, current, npc);
-
-    const directive = pendingDirective.get(current);
-    pendingDirective.delete(current);
-
-    const history = histories.get(current) ?? [];
-    const messages: ChatMessage[] = [
-      { role: "system", content: directive ? `${system}\n\n${directive}` : system },
-      ...history,
-      { role: "user", content: playerLine },
-    ];
-
-    let reply: string;
+    let result;
     try {
-      const res = await backend.chat(messages);
-      reply = res.content || "……";
+      result = await dialogue.say(current, playerLine);
     } catch (err) {
       console.error(`  (返事が返ってこなかった: ${(err as Error).message})`);
       return;
     }
 
-    console.log(`\n${npc.name}「${reply}」`);
-
-    // The system prompt is rebuilt each turn from current state, so only the
-    // back-and-forth is carried over.
-    history.push({ role: "user", content: playerLine });
-    history.push({ role: "assistant", content: reply });
-    histories.set(current, history);
-
-    // The model was free to use anything it was given, so treat it as said.
-    announceFacts([
-      ...state.recordDisclosure(npc),
-      ...state.recordLiesTold(current, lies),
-    ]);
+    console.log(`\n${npcName(current)}「${result.reply}」`);
+    announceFacts(result.granted);
   }
 
   // --- accusing ------------------------------------------------------------
 
   async function accuse(): Promise<void> {
-    const solution = scenario.world.solutions.find((s) => !state.isSolved(s.id));
-    if (!solution) {
-      console.log("もう突きつけるものはない。");
+    const attemptable = state.attemptableSolutions();
+    if (attemptable.length === 0) {
+      console.log("まだ確信が持てない。話を聞き込む余地がある。");
       return;
     }
 
-    const missing = state.missing(solution.requires);
-    if (missing.length > 0) {
-      console.log("まだ確信が持てない。話を聞き込む余地がある。");
-      return;
+    let solution: Solution;
+    if (attemptable.length === 1) {
+      solution = attemptable[0]!;
+    } else {
+      console.log("\nどの事件について問い詰める？");
+      attemptable.forEach((s, i) => console.log(`  ${i + 1}) ${s.label}`));
+      const pick = await prompt("  番号: ");
+      if (pick === null) return;
+      const idx = Number(pick.trim()) - 1;
+      if (!Number.isInteger(idx) || idx < 0 || idx >= attemptable.length) {
+        console.log("……やめておこう。");
+        return;
+      }
+      solution = attemptable[idx]!;
     }
 
     const answers: Record<string, string> = {};

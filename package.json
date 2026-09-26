@@ -6,10 +6,10 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18.0"
   },
   "scripts": {
-    "play": "node src/cli/play.ts",
+    "play": "node --env-file-if-exists=.env src/cli/play.ts",
     "test": "node --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit"
   },
