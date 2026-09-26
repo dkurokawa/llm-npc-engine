@@ -220,6 +220,27 @@ describe("cross-reference checks", () => {
     });
     assert.ok(problems.some((p) => p.includes("needs at least one broken_by evidence")));
   });
+
+  test("a duplicate option within one slot is rejected", () => {
+    const solution = sample.world.solutions[0]!;
+    const [first, ...rest] = solution.slots;
+    const dupedOptions = { ...first!, options: [...first!.options, first!.options[0]!] };
+    const problems = validateScenario(
+      { ...sample.world, solutions: [{ ...solution, slots: [dupedOptions, ...rest] }] },
+      sample.npcs,
+    );
+    assert.ok(problems.some((p) => p.includes("contains a duplicate option")));
+  });
+
+  test("knowledge.keywords as an explicit empty array is rejected even without grants", () => {
+    const martha = sample.npcs.martha!;
+    const withEmptyKeywords = { ...martha.knowledge[0]!, keywords: [] };
+    const problems = validateScenario(sample.world, {
+      ...sample.npcs,
+      martha: { ...martha, knowledge: [withEmptyKeywords, ...martha.knowledge.slice(1)] },
+    });
+    assert.ok(problems.some((p) => p.includes("must not be an empty array")));
+  });
 });
 
 describe("loadScenario", () => {

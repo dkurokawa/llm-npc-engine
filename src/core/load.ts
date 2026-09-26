@@ -104,6 +104,11 @@ function crossCheck(world: World, npcs: NpcBook): string[] {
         // so it weakens the multi-condition lock without looking like it does.
         problems.push(`solutions.${sol.id}.slots.${slot.id}: needs at least two options`);
       }
+      if (new Set(slot.options).size !== slot.options.length) {
+        // A repeated option is the same weakening in disguise: picking either
+        // copy scores the same, so it is not really a separate choice.
+        problems.push(`solutions.${sol.id}.slots.${slot.id}.options: contains a duplicate option`);
+      }
     }
   }
 
@@ -123,6 +128,14 @@ function crossCheck(world: World, npcs: NpcBook): string[] {
         // the thing that "just got disclosed", so it cannot grant a fact.
         problems.push(
           `npcs.${npcId}.knowledge.${k.id}: has grants but no keywords, so it could never be disclosed`,
+        );
+      }
+      if (k.keywords?.length === 0) {
+        // Omitting the field is what makes it background knowledge; writing
+        // `keywords: []` instead reads as a keyworded entry that can never
+        // match anything, which is a different (and always wrong) thing.
+        problems.push(
+          `npcs.${npcId}.knowledge.${k.id}.keywords: must not be an empty array — omit the field for background knowledge, or list at least one keyword`,
         );
       }
       if (k.keywords && hasEmptyKeyword(k.keywords)) {
