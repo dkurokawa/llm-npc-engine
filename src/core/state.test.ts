@@ -169,6 +169,18 @@ describe("lies", () => {
     assert.ok(!prompt.includes("嘘"), "the model must not be told it is lying");
   });
 
+  test("options.excludeLieIds drops a lie's 'answer with this claim' line", () => {
+    const state = fresh();
+    const martha = sample.npcs.martha!;
+    const withLie = buildNpcPrompt(state, "martha", martha, UNRELATED).system;
+    assert.ok(withLie.includes("ずっと店にいて"));
+
+    const excluded = buildNpcPrompt(state, "martha", martha, UNRELATED, {
+      excludeLieIds: ["alibi_lie"],
+    }).system;
+    assert.ok(!excluded.includes("ずっと店にいて"));
+  });
+
   test("an unrelated line does not count as having told the lie", () => {
     const state = fresh();
     const martha = sample.npcs.martha!;

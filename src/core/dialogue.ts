@@ -71,13 +71,15 @@ export class Dialogue {
   }
 
   /**
-   * Presents `evidenceId` to `npcId`. If it doesn't break any of their active
-   * lies, the backend is never called and nothing changes — there's nothing
-   * for the model to react to. If it does, the model is asked to react
-   * *before* anything commits: `GameState.present()` (which marks the lie
-   * broken and grants its facts) and the history append both happen only
-   * once the backend has actually answered, so a failed call leaves the lie
-   * standing, exactly as if `/show` had never been tried.
+   * Presents `evidenceId` to `npcId`. If the player doesn't actually hold
+   * that evidence, or it doesn't break any of their active lies, the backend
+   * is never called and nothing changes — there's nothing to confront them
+   * with, or nothing for the model to react to. If it does break something,
+   * the model is asked to react *before* anything commits:
+   * `GameState.present()` (which marks the lie broken and grants its facts)
+   * and the history append both happen only once the backend has actually
+   * answered, so a failed call leaves the lie standing, exactly as if
+   * `/show` had never been tried.
    */
   async confront(
     npcId: NpcId,
@@ -85,10 +87,21 @@ export class Dialogue {
     playerLine: string,
   ): Promise<ConfrontResult> {
     const npc = this.#npc(npcId);
+    // Evidence the player hasn't acquired must not be usable to break a lie
+    // just because a caller happens to pass its id — `/show` already checks
+    // this, but the core API shouldn't rely on the CLI to enforce it.
+    if (!this.#state.holds(evidenceId)) return { broken: false };
+
     const lie = this.#state.findBreakingLie(npcId, evidenceId);
     if (!lie) return { broken: false };
 
-    const { system } = buildNpcPrompt(this.#state, npcId, npc, playerLine);
+    // The lie hasn't broken yet at prompt-build time, so it's still "active"
+    // — excluded here so the model isn't simultaneously told to answer with
+    // the claim (this section) and, via the directive below, that the same
+    // claim was just caught as a lie.
+    const { system } = buildNpcPrompt(this.#state, npcId, npc, playerLine, {
+      excludeLieIds: [lie.id],
+    });
     const directive = brokenLieDirective(lie);
 
     const history = this.#histories.get(npcId) ?? [];
@@ -103,14 +116,21 @@ export class Dialogue {
 
     // Nothing below this line may throw: only a successful reply commits the
     // confrontation, so a failed call leaves the lie standing for a retry.
-    const presentGranted = this.#state.present(npcId, evidenceId).granted;
+    //
+    // recordTurn() runs first, against exactly the state the prompt above was
+    // built from. Calling present() first would let its on_broken.grants
+    // satisfy some other knowledge entry's `requires` before recordTurn()
+    // ever ran, disclosing it in this same turn despite it never having been
+    // part of the prompt actually sent (the same class of bug fixed in
+    // recordTurn() itself — see its own doc comment).
     const turnGranted = this.#state.recordTurn(npcId, npc, playerLine);
+    const presentGranted = this.#state.present(npcId, evidenceId).granted;
 
     history.push({ role: "user", content: playerLine });
     history.push({ role: "assistant", content: reply });
     this.#histories.set(npcId, history);
 
-    return { broken: true, lie, reply, granted: [...presentGranted, ...turnGranted] };
+    return { broken: true, lie, reply, granted: [...turnGranted, ...presentGranted] };
   }
 
   #npc(npcId: NpcId): Npc {

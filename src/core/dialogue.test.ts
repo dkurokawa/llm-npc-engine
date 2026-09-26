@@ -99,9 +99,16 @@ describe("Dialogue", () => {
 describe("Dialogue#confront", () => {
   const CONFRONT_LINE = "これはどういうことだ。雨具の受取証がある。";
 
+  /** Tells alibi_lie and acquires the receipt — the two preconditions confront() needs. */
+  function readyToConfront(state: GameState): void {
+    const martha = sample.npcs.martha!;
+    state.grant(["found_receipt"]); // acquires the "receipt" evidence
+    state.recordTurn("martha", martha, "昨夜はどこにいましたか？"); // tells alibi_lie
+  }
+
   test("never calls the backend when the evidence breaks nothing yet", async () => {
     const state = new GameState(sample);
-    // alibi_lie hasn't been told, so present()/findBreakingLie find nothing.
+    state.grant(["found_receipt"]); // held, but alibi_lie hasn't been told
     const backend = new FakeBackend();
     const dialogue = new Dialogue(state, backend);
 
@@ -110,10 +117,24 @@ describe("Dialogue#confront", () => {
     assert.deepEqual(backend.calls, []);
   });
 
-  test("a failed reaction leaves the lie unbroken and ungranted, and a retry breaks it", async () => {
+  test("never calls the backend or breaks a lie using evidence the player has not acquired", async () => {
     const state = new GameState(sample);
     const martha = sample.npcs.martha!;
     state.recordTurn("martha", martha, "昨夜はどこにいましたか？"); // tells alibi_lie
+    assert.equal(state.holds("receipt"), false, "the fixture must not have acquired the evidence");
+
+    const backend = new FakeBackend();
+    const dialogue = new Dialogue(state, backend);
+
+    const result = await dialogue.confront("martha", "receipt", CONFRONT_LINE);
+    assert.deepEqual(result, { broken: false });
+    assert.deepEqual(backend.calls, []);
+    assert.equal(state.isBroken("martha", "alibi_lie"), false);
+  });
+
+  test("a failed reaction leaves the lie unbroken and ungranted, and a retry breaks it", async () => {
+    const state = new GameState(sample);
+    readyToConfront(state);
 
     const backend = new FakeBackend(new Error("network down"), "観念して認めるよ");
     const dialogue = new Dialogue(state, backend);
@@ -141,5 +162,51 @@ describe("Dialogue#confront", () => {
     const retryMessages = backend.calls[1]!;
     const userTurns = retryMessages.filter((m) => m.role === "user");
     assert.equal(userTurns.length, 1, "the failed attempt must not have left a stray history entry");
+  });
+
+  test("does not disclose knowledge unlocked by the very fact this confrontation grants", async () => {
+    const state = new GameState(sample);
+    readyToConfront(state);
+
+    const backend = new FakeBackend("観念して認めるよ");
+    const dialogue = new Dialogue(state, backend);
+
+    // "なぜ" matches martha.admits_debt's keywords, whose `requires` is
+    // martha_confessed — the very fact breaking this lie is about to grant.
+    // present() must not run before recordTurn(), or admits_debt would look
+    // reachable a turn early.
+    const line = "これはどういうことだ。なぜ嘘をついた。雨具の受取証がある。";
+    const result = await dialogue.confront("martha", "receipt", line);
+
+    assert.equal(result.broken, true);
+    assert.deepEqual(
+      result.granted,
+      ["martha_confessed"],
+      "admits_debt must not be disclosed in the same turn its requirement was granted",
+    );
+    assert.equal(state.has("knows_debt"), false);
+  });
+
+  test("excludes the lie's 'answer with this claim' line from the prompt it reacts to", async () => {
+    const state = new GameState(sample);
+    readyToConfront(state);
+
+    const backend = new FakeBackend("観念して認めるよ");
+    const dialogue = new Dialogue(state, backend);
+
+    await dialogue.confront("martha", "receipt", CONFRONT_LINE);
+
+    const system = backend.calls[0]![0]!;
+    assert.equal(system.role, "system");
+    const alibiLie = sample.npcs.martha!.lies[0]!;
+    const answerInstruction = `「${alibiLie.topic}」について聞かれたら「${alibiLie.claim}」と答える`;
+    assert.ok(
+      !system.content.includes(answerInstruction),
+      "the lie being broken must not still be listed as something to answer with",
+    );
+    assert.ok(
+      system.content.includes(alibiLie.claim),
+      "the broken-lie stage direction should still name the claim being retracted",
+    );
   });
 });

@@ -18,6 +18,18 @@ export interface NpcPrompt {
   system: string;
 }
 
+export interface BuildNpcPromptOptions {
+  /**
+   * Lie ids to leave out of the "what you'll answer" section — for a lie
+   * `Dialogue.confront` is about to have the model react to breaking. Without
+   * this, the same prompt would both instruct the model to answer with the
+   * claim if asked *and*, via `brokenLieDirective`, tell it that claim was
+   * just caught as a lie — two contradictory instructions in one system
+   * message.
+   */
+  excludeLieIds?: readonly string[];
+}
+
 /** A stage direction appended when evidence has just broken a lie. */
 export function brokenLieDirective(lie: Lie): string {
   return [
@@ -33,6 +45,7 @@ export function buildNpcPrompt(
   npcId: NpcId,
   npc: Npc,
   playerLine: string,
+  options?: BuildNpcPromptOptions,
 ): NpcPrompt {
   const { world } = state.scenario;
   const lines: string[] = [];
@@ -57,7 +70,7 @@ export function buildNpcPrompt(
   }
 
   // Lies are presented as fact, with no hint that they are lies.
-  const lies = state.activeLies(npcId, npc);
+  const lies = state.activeLies(npcId, npc).filter((l) => !options?.excludeLieIds?.includes(l.id));
   if (lies.length > 0) {
     lines.push("", "【あなたが答えること】");
     for (const l of lies) lines.push(`- 「${l.topic}」について聞かれたら「${l.claim}」と答える`);
