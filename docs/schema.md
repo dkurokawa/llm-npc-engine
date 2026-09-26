@@ -80,8 +80,9 @@
     "knowledge": [
       {
         "id": "thomas_was_regular",
-        "content": "旅人のトマスは、この町に来るたびに顔を出す常連だった"
-        // requires: [] は省略可。keywords が無い＝背景知識で、無条件・常にプロンプトに載る。
+        "content": "旅人のトマスは、この町に来るたびに顔を出す常連だった",
+        "requires": []  // 省略可。省略すると既定値の [] になる（＝無条件で常に話す）
+        // keywords が無い＝背景知識で、無条件・常にプロンプトに載る。
         // grants は持てない（読み込み時にエラー）— 「聞き出した瞬間」が無いので fact を立てようがない。
       },
       {
@@ -252,7 +253,11 @@ martha.lies[*].broken_by に "receipt" が含まれるか？
 
 - 型違い（例: `title` が文字列でない）
 - 未知キー（例: `grants` を `grant` と打ち間違えた）
-- 必須フィールドの欠落
+- 必須フィールドの欠落（`knowledge[].requires` は例外で、省略すると既定値 `[]` になる）
+- **id として定義される全箇所**（NPC の key、`facts` / `evidence` の key、
+  `knowledge` / `lie` / `solution` / `slot` の `id`）が `/^[A-Za-z0-9_-]+$/` 以外を含む。
+  各 id は内部で `npcId:knowledgeId` のような複合キーの半分になる（`src/core/state.ts`）ので、
+  `:` を許すと別々の (npcId, id) の組が同じ文字列に衝突しうる
 
 **相互参照・個数・重複（`validateScenario`）:**
 

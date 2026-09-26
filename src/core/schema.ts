@@ -17,6 +17,16 @@ import type { NpcBook, Npc, World } from "./types.ts";
 const factId = z.string();
 const evidenceId = z.string();
 
+/**
+ * Every id that gets defined here (never a reference to one) ends up as half
+ * of an internal composite key — `${npcId}:${knowledgeId}` and the like, see
+ * `state.ts`. Restricting the character set is what keeps an id containing
+ * `:` from colliding with a different (npcId, id) pair that happens to join
+ * into the same string.
+ */
+const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+const scenarioId = z.string().regex(ID_PATTERN, `must match ${ID_PATTERN.toString()}`);
+
 const factSchema = z
   .object({
     label: z.string(),
@@ -33,7 +43,7 @@ const evidenceSchema = z
 
 const solutionSlotSchema = z
   .object({
-    id: z.string(),
+    id: scenarioId,
     question: z.string(),
     answer: z.string(),
     options: z.array(z.string()),
@@ -42,7 +52,7 @@ const solutionSlotSchema = z
 
 const solutionSchema = z
   .object({
-    id: z.string(),
+    id: scenarioId,
     label: z.string(),
     slots: z.array(solutionSlotSchema),
     requires: z.array(factId),
@@ -55,8 +65,8 @@ export const worldSchema = z
     title: z.string(),
     synopsis: z.string(),
     common_knowledge: z.array(z.string()),
-    facts: z.record(z.string(), factSchema),
-    evidence: z.record(z.string(), evidenceSchema),
+    facts: z.record(scenarioId, factSchema),
+    evidence: z.record(scenarioId, evidenceSchema),
     solutions: z.array(solutionSchema),
   })
   .strict();
@@ -71,9 +81,12 @@ const personaSchema = z
 
 const knowledgeSchema = z
   .object({
-    id: z.string(),
+    id: scenarioId,
     content: z.string(),
-    requires: z.array(factId),
+    // Optional on input: background knowledge (no `keywords`) commonly has
+    // nothing to require, and `[]` is trivially satisfied anyway (see
+    // `GameState.hasAll`), so there's nothing lost in letting an author omit it.
+    requires: z.array(factId).default([]),
     keywords: z.array(z.string()).optional(),
     grants: z.array(factId).optional(),
   })
@@ -88,7 +101,7 @@ const lieBreakSchema = z
 
 const lieSchema = z
   .object({
-    id: z.string(),
+    id: scenarioId,
     topic: z.string(),
     claim: z.string(),
     truth: z.string(),
@@ -110,7 +123,7 @@ export const npcSchema = z
   })
   .strict();
 
-export const npcBookSchema = z.record(z.string(), npcSchema);
+export const npcBookSchema = z.record(scenarioId, npcSchema);
 
 // --- schema/type parity, checked at compile time --------------------------
 

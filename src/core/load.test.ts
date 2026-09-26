@@ -21,6 +21,16 @@ describe("schema validation", () => {
     assert.deepEqual(validateScenario(sample.world, sample.npcs), []);
   });
 
+  test("knowledge.requires may be omitted and defaults to an empty array", () => {
+    const martha = sample.npcs.martha!;
+    const { requires: _requires, ...withoutRequires } = martha.knowledge[0]!;
+    const problems = validateScenario(sample.world, {
+      ...sample.npcs,
+      martha: { ...martha, knowledge: [withoutRequires, ...martha.knowledge.slice(1)] },
+    });
+    assert.deepEqual(problems, []);
+  });
+
   test("an empty input reports every missing field, all under world.", () => {
     const problems = validateScenario({}, {});
     assert.ok(problems.length > 0);
@@ -40,6 +50,27 @@ describe("schema validation", () => {
     const problems = validateScenario({ ...sample.world, bogus: true }, sample.npcs);
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /world: Unrecognized key/i);
+  });
+
+  test("an npc key containing a disallowed character (e.g. a colon) is rejected", () => {
+    // Every id ends up as half of an internal composite key (`npcId:id`, see
+    // state.ts); an id containing `:` could collide with an unrelated pair.
+    const problems = validateScenario(sample.world, { ...sample.npcs, "a:b": sample.npcs.gareth! });
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /^npcs\.a:b:/);
+  });
+
+  test("a knowledge id containing a disallowed character is rejected", () => {
+    const gareth = sample.npcs.gareth!;
+    const bad = gareth.knowledge.map((k) =>
+      k.id === "cloak_man_stayed" ? { ...k, id: "cloak:man" } : k,
+    );
+    const problems = validateScenario(sample.world, {
+      ...sample.npcs,
+      gareth: { ...gareth, knowledge: bad },
+    });
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /^npcs\.gareth\.knowledge\[0\]\.id: must match/);
   });
 
   test("a schema failure skips cross-reference checking entirely", () => {
