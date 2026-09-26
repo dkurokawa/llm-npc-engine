@@ -113,8 +113,10 @@ model or a real network. The tests check, among other things:
 - `world.json`/`npc.json` are rejected for a wrong type, an unknown key, a
   duplicate id, or a keyword rule violation — not just a dangling reference
   (`load.test.ts`)
-- a failed reply from the backend leaves history, facts, and a pending stage
-  direction untouched, and a retry still sees that directive (`dialogue.test.ts`)
+- a failed reply from the backend leaves history and facts untouched, and a
+  retry succeeds cleanly — including when the reply is an NPC reacting to a
+  lie just broken by evidence, where a failure must leave the lie standing
+  (`dialogue.test.ts`)
 - each of the three backends builds the request its provider expects and
   parses the reply back, against a mocked `fetch` (`src/llm/*.test.ts`)
 

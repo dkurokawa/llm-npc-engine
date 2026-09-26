@@ -163,27 +163,40 @@ export class GameState {
   }
 
   /**
-   * Confronts an NPC with a piece of evidence. Whether a lie falls is decided
-   * by an id lookup, never by asking the model to judge the contradiction.
+   * Finds, without changing anything, the lie that presenting `evidenceId`
+   * to this NPC would break — the same lookup `present()` commits. Exposed
+   * on its own so a caller can decide whether to bother the model *before*
+   * touching any state (see `Dialogue.confront`): if nothing would break,
+   * there is nothing worth asking the model to react to.
    */
-  present(npcId: NpcId, evidenceId: EvidenceId): PresentVerdict {
+  findBreakingLie(npcId: NpcId, evidenceId: EvidenceId): Lie | undefined {
     const npc = this.scenario.npcs[npcId];
-    if (!npc) return { broken: false, granted: [] };
+    if (!npc) return undefined;
 
     for (const lie of this.activeLies(npcId, npc)) {
       if (!lie.broken_by.includes(evidenceId)) continue;
       // A lie can only be broken once the player has actually heard it;
       // otherwise evidence would resolve a contradiction never established.
       if (!this.#liesTold.has(`${npcId}:${lie.id}`)) continue;
-
-      this.#liesBroken.add(`${npcId}:${lie.id}`);
-      return {
-        broken: true,
-        lie,
-        granted: this.grant(lie.on_broken.grants),
-      };
+      return lie;
     }
-    return { broken: false, granted: [] };
+    return undefined;
+  }
+
+  /**
+   * Confronts an NPC with a piece of evidence. Whether a lie falls is decided
+   * by an id lookup, never by asking the model to judge the contradiction.
+   */
+  present(npcId: NpcId, evidenceId: EvidenceId): PresentVerdict {
+    const lie = this.findBreakingLie(npcId, evidenceId);
+    if (!lie) return { broken: false, granted: [] };
+
+    this.#liesBroken.add(`${npcId}:${lie.id}`);
+    return {
+      broken: true,
+      lie,
+      granted: this.grant(lie.on_broken.grants),
+    };
   }
 
   // --- inventory -----------------------------------------------------------

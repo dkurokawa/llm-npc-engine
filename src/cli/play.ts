@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 
 import { Dialogue } from "../core/dialogue.ts";
 import { loadScenario, ScenarioError } from "../core/load.ts";
-import { brokenLieDirective } from "../core/prompt.ts";
 import { GameState } from "../core/state.ts";
 import type { NpcId, Scenario, Solution } from "../core/types.ts";
 import { backendFromEnv } from "../llm/index.ts";
@@ -144,14 +143,26 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const verdict = state.present(current, evidenceId);
-      if (verdict.broken && verdict.lie) {
-        // The confrontation resolved in code; the model is only told how to
-        // act now that it has, never asked to judge the contradiction itself.
-        dialogue.setDirective(current, brokenLieDirective(verdict.lie));
-        console.log(`  ${scenario.world.evidence[evidenceId]!.label}を突きつけた。`);
-        announceFacts(verdict.granted);
-        await speak(`これはどういうことだ。${scenario.world.evidence[evidenceId]!.label}がある。`);
+      console.log(`  ${scenario.world.evidence[evidenceId]!.label}を突きつけた。`);
+
+      let result;
+      try {
+        // The confrontation resolves in code (see GameState.findBreakingLie);
+        // the model is only asked to react, never to judge the contradiction
+        // itself, and only once it has actually answered does anything commit.
+        result = await dialogue.confront(
+          current,
+          evidenceId,
+          `これはどういうことだ。${scenario.world.evidence[evidenceId]!.label}がある。`,
+        );
+      } catch (err) {
+        console.error(`  (返事が返ってこなかった: ${(err as Error).message})`);
+        continue;
+      }
+
+      if (result.broken) {
+        console.log(`\n${npcName(current)}「${result.reply}」`);
+        announceFacts(result.granted);
       } else {
         console.log("  相手は顔色ひとつ変えなかった。");
       }

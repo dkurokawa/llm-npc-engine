@@ -67,50 +67,23 @@ describe("Dialogue", () => {
     assert.deepEqual(state.facts, []);
   });
 
-  test("a failed call changes nothing, and a retry still carries the pending directive", async () => {
+  test("say() leaves history and facts untouched on failure, and a retry succeeds", async () => {
     const state = new GameState(sample);
-    const martha = sample.npcs.martha!;
-    // Set up a broken lie the way play.ts's /show handler does, so a
-    // directive is pending before the backend call under test happens.
-    state.recordTurn("martha", martha, "昨夜はどこにいましたか？");
-    const broken = state.present("martha", "receipt");
-    assert.equal(broken.broken, true);
-
-    const backend = new FakeBackend(new Error("network down"), "観念して認めるよ");
+    const backend = new FakeBackend(new Error("network down"), "マントの男が泊まったんじゃ");
     const dialogue = new Dialogue(state, backend);
-    dialogue.setDirective("martha", "動揺した様子で応じること");
+    const line = "昨夜、怪しい客が泊まっていましたか？";
 
-    const factsBeforeFailure = state.facts.slice().sort();
-    await assert.rejects(() => dialogue.say("martha", "本当のことを話せ"), /network down/);
-    assert.deepEqual(state.facts.slice().sort(), factsBeforeFailure, "a failed turn must not change state");
+    await assert.rejects(() => dialogue.say("gareth", line), /network down/);
+    assert.deepEqual(state.facts, [], "a failed turn must not change state");
+    assert.equal(backend.calls.length, 1);
 
-    // Retry with the same line: the directive set before the failure is
-    // still there for the backend to see.
-    const result = await dialogue.say("martha", "本当のことを話せ");
-    assert.equal(result.reply, "観念して認めるよ");
+    const result = await dialogue.say("gareth", line);
+    assert.equal(result.reply, "マントの男が泊まったんじゃ");
+    assert.deepEqual(result.granted, ["saw_cloak"]);
 
     const retryMessages = backend.calls[1]!;
-    const system = retryMessages[0]!;
-    assert.equal(system.role, "system");
-    assert.ok(system.content.includes("動揺した様子で応じること"));
-  });
-
-  test("a directive is consumed by the reply it decorates, and not repeated after", async () => {
-    const state = new GameState(sample);
-    const backend = new FakeBackend("わかった、話す", "それだけだ");
-    const dialogue = new Dialogue(state, backend);
-    dialogue.setDirective("gareth", "焦った様子で答えること");
-
-    await dialogue.say("gareth", "本当のことを言え");
-    const firstSystem = backend.calls[0]![0]!;
-    assert.ok(firstSystem.content.includes("焦った様子で答えること"));
-
-    await dialogue.say("gareth", "続けて");
-    const secondSystem = backend.calls[1]![0]!;
-    assert.ok(
-      !secondSystem.content.includes("焦った様子で答えること"),
-      "a directive should not survive past the reply it was set for",
-    );
+    const userTurns = retryMessages.filter((m) => m.role === "user");
+    assert.equal(userTurns.length, 1, "the failed attempt must not have left a stray history entry");
   });
 
   test("say() throws for an unknown NPC id without touching the backend", async () => {
@@ -120,5 +93,53 @@ describe("Dialogue", () => {
 
     await assert.rejects(() => dialogue.say("nobody", "hello"), /no such npc: nobody/);
     assert.deepEqual(backend.calls, []);
+  });
+});
+
+describe("Dialogue#confront", () => {
+  const CONFRONT_LINE = "これはどういうことだ。雨具の受取証がある。";
+
+  test("never calls the backend when the evidence breaks nothing yet", async () => {
+    const state = new GameState(sample);
+    // alibi_lie hasn't been told, so present()/findBreakingLie find nothing.
+    const backend = new FakeBackend();
+    const dialogue = new Dialogue(state, backend);
+
+    const result = await dialogue.confront("martha", "receipt", CONFRONT_LINE);
+    assert.deepEqual(result, { broken: false });
+    assert.deepEqual(backend.calls, []);
+  });
+
+  test("a failed reaction leaves the lie unbroken and ungranted, and a retry breaks it", async () => {
+    const state = new GameState(sample);
+    const martha = sample.npcs.martha!;
+    state.recordTurn("martha", martha, "昨夜はどこにいましたか？"); // tells alibi_lie
+
+    const backend = new FakeBackend(new Error("network down"), "観念して認めるよ");
+    const dialogue = new Dialogue(state, backend);
+
+    const factsBeforeFailure = state.facts.slice().sort();
+    await assert.rejects(
+      () => dialogue.confront("martha", "receipt", CONFRONT_LINE),
+      /network down/,
+    );
+    assert.equal(state.isBroken("martha", "alibi_lie"), false, "the lie must still stand after a failed reaction");
+    assert.deepEqual(
+      state.facts.slice().sort(),
+      factsBeforeFailure,
+      "a failed confrontation must not change state",
+    );
+    assert.equal(backend.calls.length, 1);
+
+    const result = await dialogue.confront("martha", "receipt", CONFRONT_LINE);
+    assert.equal(result.broken, true);
+    assert.equal(result.reply, "観念して認めるよ");
+    assert.equal(result.lie.id, "alibi_lie");
+    assert.deepEqual(result.granted, ["martha_confessed"]);
+    assert.equal(state.isBroken("martha", "alibi_lie"), true);
+
+    const retryMessages = backend.calls[1]!;
+    const userTurns = retryMessages.filter((m) => m.role === "user");
+    assert.equal(userTurns.length, 1, "the failed attempt must not have left a stray history entry");
   });
 });
