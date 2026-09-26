@@ -204,7 +204,12 @@ async function main(): Promise<void> {
   async function accuse(): Promise<void> {
     const attemptable = state.attemptableSolutions();
     if (attemptable.length === 0) {
-      console.log("まだ確信が持てない。話を聞き込む余地がある。");
+      const unresolved = scenario.world.solutions.filter((s) => !state.isSolved(s.id));
+      console.log(
+        unresolved.length === 0
+          ? "もう突きつけるものはない。"
+          : "まだ確信が持てない。話を聞き込む余地がある。",
+      );
       return;
     }
 
