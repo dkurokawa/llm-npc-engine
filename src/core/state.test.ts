@@ -203,10 +203,7 @@ describe("accusation — the multi-condition lock", () => {
 
     const verdict = state.accuse({ solutionId: "case_closed", answers: correct });
     assert.equal(verdict.kind, "locked");
-    assert.deepEqual(
-      verdict.kind === "locked" ? verdict.missing : [],
-      ["martha_confessed", "knows_debt"],
-    );
+    assert.deepEqual(verdict.missing, ["martha_confessed", "knows_debt"]);
   });
 
   test("attemptableSolutions offers it once its requirements hold", () => {
@@ -227,10 +224,7 @@ describe("accusation — the multi-condition lock", () => {
       answers: { culprit: "martha" },
     });
     assert.equal(verdict.kind, "incomplete");
-    assert.deepEqual(
-      verdict.kind === "incomplete" ? verdict.missing : [],
-      ["method", "motive"],
-    );
+    assert.deepEqual(verdict.missing, ["method", "motive"]);
   });
 
   test("every slot correct at once closes the case", () => {

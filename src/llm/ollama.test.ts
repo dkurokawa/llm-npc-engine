@@ -22,7 +22,7 @@ describe("OllamaBackend", () => {
     const result = await backend.chat([{ role: "user", content: "hi" }]);
 
     assert.equal(capturedUrl, "http://example:1234/api/chat");
-    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    const body = JSON.parse(capturedInit?.body as string) as Record<string, unknown>;
     assert.equal(body.model, "test-model");
     assert.equal(body.stream, false);
     assert.deepEqual(body.messages, [{ role: "user", content: "hi" }]);

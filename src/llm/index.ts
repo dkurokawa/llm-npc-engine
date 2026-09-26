@@ -22,7 +22,8 @@ function required(env: NodeJS.ProcessEnv, key: string): string {
 }
 
 export function backendFromEnv(env: NodeJS.ProcessEnv = process.env): LlmBackend {
-  const name = (env.LLM_BACKEND ?? "ollama") as BackendName;
+  const raw = env.LLM_BACKEND ?? "ollama";
+  const name = raw as BackendName;
 
   switch (name) {
     case "ollama":
@@ -46,7 +47,7 @@ export function backendFromEnv(env: NodeJS.ProcessEnv = process.env): LlmBackend
 
     default:
       throw new Error(
-        `unknown LLM_BACKEND: ${name} (expected ollama, openai-compat, or anthropic)`,
+        `unknown LLM_BACKEND: ${raw} (expected ollama, openai-compat, or anthropic)`,
       );
   }
 }

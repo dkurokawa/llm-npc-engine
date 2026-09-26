@@ -32,7 +32,7 @@ describe("OpenAICompatBackend", () => {
     const headers = capturedInit?.headers as Record<string, string>;
     assert.equal(headers.Authorization, "Bearer test-key");
 
-    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    const body = JSON.parse(capturedInit?.body as string) as Record<string, unknown>;
     assert.equal(body.model, "test-model");
     assert.equal(body.temperature, 0.8);
     assert.deepEqual(body.messages, [{ role: "user", content: "hi" }]);

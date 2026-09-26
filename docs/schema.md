@@ -9,6 +9,7 @@
 |---|---|
 | 会話の生成・嘘の言い回し | **LLM** |
 | 何を知っているか / 何を隠すか | **データ**（`npc.json`） |
+| **いつ開示されたか（プレイヤーが聞いたか）の判定** | **コード**（発言のキーワード部分一致。モデルが実際に何と言ったかは見ない） |
 | **進行の確定・矛盾の判定** | **コード**（`world.json` の条件を評価するだけ） |
 
 **進行判定を LLM にやらせない。** 同じことを言っても通ったり通らなかったりする揺れは、
@@ -78,15 +79,24 @@
     // 知識。開示条件つき（§2-1）。
     "knowledge": [
       {
+        "id": "thomas_was_regular",
+        "content": "旅人のトマスは、この町に来るたびに顔を出す常連だった"
+        // requires: [] は省略可。keywords が無い＝背景知識で、無条件・常にプロンプトに載る。
+        // grants は持てない（読み込み時にエラー）— 「聞き出した瞬間」が無いので fact を立てようがない。
+      },
+      {
         "id": "cloak_man_stayed",
         "content": "昨夜、黒いマントの男が3号室に泊まった",
-        "requires": [],                    // 無条件で話す
-        "grants": ["saw_cloak"]            // 聞き出すとこの fact が立つ
+        "requires": [],
+        "keywords": ["昨夜", "客", "泊", "怪しい"], // この語を含む発言で初めて開示される
+        "grants": ["saw_cloak"]            // 開示された瞬間にこの fact が立つ
       },
       {
         "id": "left_at_dawn",
         "content": "その男は明け方に慌てて出て行った",
-        "requires": ["saw_cloak"]          // 上を聞いた後でないと話さない
+        "requires": ["saw_cloak"],         // 上が開示されるまでは候補にすら入らない
+        "keywords": ["出て", "いつ", "朝"],
+        "grants": ["knows_departure"]
       }
     ],
 
@@ -112,7 +122,8 @@
         "topic": "昨夜どこにいたか",
         "claim": "ずっと店にいた",          // LLM にはこれを本当のこととして喋らせる
         "truth": "外出していた",            // プレイヤーには見せない。突きつけ成立時に開示
-        "grants_on_told": ["heard_alibi"], // 嘘を聞いた時点で立つ fact
+        "keywords": ["昨夜", "どこ", "外", "アリバイ"], // 必須。1つ以上（§2-2）
+        "grants_on_told": ["heard_alibi"], // 発言が keywords に一致したターンにだけ立つ fact
         "broken_by": ["receipt"],          // この証拠を突きつけると崩れる（§4）
         "on_broken": {
           "reaction": "動揺して口ごもる",
@@ -126,11 +137,26 @@
 
 ### 2-1. 知識の開示制御
 
-`knowledge[].requires` に fact ID を並べる。**全部立っていないと LLM の system prompt に載らない。**
-＝ 載っていないものは、そもそもモデルが知らないので喋りようがない。
+`knowledge[].requires` に fact ID を並べる。**全部立っていないと候補にすら入らない。**
+＝ 載っていないものは、そもそもモデルが知らないので喋りようがない。これが「知らないことは
+答えない」の実装。プロンプトで「答えるな」と**お願いするのではなく、情報そのものを渡さない**。
+8B クラスでも壊れないのはこのため。
 
-これが「知らないことは答えない」の実装。プロンプトで「答えるな」と**お願いするのではなく、
-情報そのものを渡さない**。8B クラスでも壊れないのはこのため。
+`requires` を満たした先、実際にいつプロンプトに載るかは `keywords` の有無で二通りに分かれる:
+
+- **`keywords` が無い（背景知識）**: 無条件・常にプロンプトに載る。**`grants` は持てない**
+  （読み込み時にエラー）。「聞き出した」という一瞬が存在しないので、そこに fact を
+  立てる根拠がない。
+- **`keywords` を持つ**: `requires` を満たし、かつ**そのターンのプレイヤーの発言が
+  `keywords` のどれかを部分文字列として含んだとき**に初めてプロンプトに載り、その瞬間に
+  「開示済み」になって `grants` の fact が立つ。一度開示されたら、以後は発言に関係なく
+  常にプロンプトに載り続ける（NPC は自分が言ったことを覚えている）。
+
+一致判定は `line.normalize("NFKC").toLowerCase()` で正規化してから部分一致を見るだけ
+（`src/core/match.ts`）。**モデルが実際に何と言ったかは一切見ない** — 「聞かれたから答えた」
+であって「答えた内容」で決まるわけではない。挨拶を繰り返すだけで
+`saw_cloak → knows_departure → found_receipt` のような多段の開示が全部踏破される、
+という抜け道はこの一線で塞がれている。
 
 `unknown` は別枠で、**聞かれる可能性が高い禁止事項**を明示して捏造を抑える保険。
 （`requires` で隠していても、モデルが推測で埋めてしまうことがある）
@@ -139,6 +165,11 @@
 
 `claim` だけを LLM に渡し、`truth` は渡さない。
 **LLM は嘘だと知らずに喋る**ので、自然な嘘になる。動揺の演技も要らない。
+
+`claim` は嘘が崩れていない間、`keywords` に関係なく常にプロンプトに載る（聞かれたら同じ嘘で
+答えさせるため）。一方で「嘘を話した」（`grants_on_told` を立てる）のは知識と同じ規則で、
+**そのターンの発言が `lies[].keywords` に一致したときだけ**。嘘の `keywords` は知識と違って
+省略できない（最低1つ必須）— 一度も聞かれていない嘘が「話した」扱いになることはない。
 
 ---
 
@@ -201,15 +232,39 @@ martha.lies[*].broken_by に "receipt" が含まれるか？
 
 | 要求 | どこで満たすか |
 |---|---|
-| ① フラグ | `world.facts` + `knowledge[].requires` / `grants` |
+| ① フラグ | `world.facts` + `knowledge[].requires` / `keywords` / `grants` |
 | ② 嘘をつく NPC | `npc.lies[]`（`claim` のみ LLM に渡す） |
 | ③ 進行の確定 | `world.solutions[].slots`（全欄同時一致）+ `requires` |
+| ④ 開示のトリガー | `knowledge[].keywords` / `lies[].keywords`（発言との部分一致。§2-1, §2-2） |
 | Obra Dinn 型の複数条件ロック | `slots` の全欄一致 + どの欄が違うか教えない |
 | 証言ID × 証拠ID の対応表 | `lies[].broken_by` → `evidence` の ID |
 | 知らないことを答えない | `requires` 未達の knowledge は prompt に載せない + `unknown` |
 
 **② と ③ が `broken_by` → `grants` → `requires` の一本の鎖で繋がる**ので、
 別々の仕組みを2つ持たずに済む。
+
+### 5-1. 読み込み時に拒否されるもの
+
+`src/core/schema.ts`（zod, `.strict()`）と `src/core/load.ts` がこの順に検証する。
+形が壊れていれば ID の相互参照チェックは走らない（意味のある対象がまだ無いため）。
+
+**形（zod スキーマ、`.strict()`）:**
+
+- 型違い（例: `title` が文字列でない）
+- 未知キー（例: `grants` を `grant` と打ち間違えた）
+- 必須フィールドの欠落
+
+**相互参照・個数・重複（`validateScenario`）:**
+
+- NPC が 0 人 / `solutions` が 0 件
+- `solution.id` の重複、同一 solution 内の `slot.id` 重複
+- 同一 NPC 内の `knowledge.id` 重複、同一 NPC 内の `lie.id` 重複
+- `requires` / `grants` / `grants_on_told` / `on_broken.grants` が指す fact ID が存在しない
+- `evidence.acquired_by` が空（開始時から所持している扱いになってしまうため）
+- `slot.answer` が `slot.options` に含まれない、`slot.options` が2択未満
+- `lie.broken_by` が空（誰にも崩せない嘘になる）、`broken_by` が指す evidence ID が存在しない
+- `grants` を持つのに `keywords` が無い knowledge（§2-1: 一生開示されない）
+- `keywords` が空、または空文字を含む knowledge / lie
 
 ---
 

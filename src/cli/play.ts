@@ -57,7 +57,10 @@ async function main(): Promise<void> {
   // piped input the stream ends while the first question is still awaited, and
   // question() would then drop every remaining buffered line. Iterating keeps
   // scripted playthroughs (demo recordings, smoke runs) intact.
-  const lines = rl[Symbol.asyncIterator]();
+  // readline's own typing leaves `TReturn` at its `any` default, which would
+  // otherwise leak into the `{ value, done }` destructure below; the cast
+  // pins it to `void`, which is what a finished iterator actually returns.
+  const lines = rl[Symbol.asyncIterator]() as NodeJS.AsyncIterator<string, void>;
 
   const npcIds = Object.keys(scenario.npcs);
   let current: NpcId = npcIds[0]!;
@@ -199,7 +202,9 @@ async function main(): Promise<void> {
       solution = attemptable[0]!;
     } else {
       console.log("\nどの事件について問い詰める？");
-      attemptable.forEach((s, i) => console.log(`  ${i + 1}) ${s.label}`));
+      attemptable.forEach((s, i) => {
+        console.log(`  ${i + 1}) ${s.label}`);
+      });
       const pick = await prompt("  番号: ");
       if (pick === null) return;
       const idx = Number(pick.trim()) - 1;
@@ -213,7 +218,9 @@ async function main(): Promise<void> {
     const answers: Record<string, string> = {};
     for (const slot of solution.slots) {
       console.log(`\n${slot.question}?`);
-      slot.options.forEach((o, i) => console.log(`  ${i + 1}) ${o}`));
+      slot.options.forEach((o, i) => {
+        console.log(`  ${i + 1}) ${o}`);
+      });
       const pick = await prompt("  番号: ");
       if (pick === null) return;
       const idx = Number(pick.trim()) - 1;

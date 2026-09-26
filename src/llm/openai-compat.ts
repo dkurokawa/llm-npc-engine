@@ -16,7 +16,7 @@ export interface OpenAICompatOptions {
 }
 
 interface OpenAIChatResponse {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: { message?: { content?: string } }[];
   usage?: { completion_tokens?: number };
 }
 

@@ -32,7 +32,7 @@ describe("AnthropicBackend", () => {
     assert.equal(headers["x-api-key"], "test-key");
     assert.equal(headers["anthropic-version"], "2023-06-01");
 
-    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    const body = JSON.parse(capturedInit?.body as string) as Record<string, unknown>;
     assert.equal(body.model, "test-model");
     assert.equal(body.system, "be terse");
     assert.deepEqual(body.messages, [{ role: "user", content: "hi" }]);
@@ -51,7 +51,7 @@ describe("AnthropicBackend", () => {
     const backend = new AnthropicBackend({ apiKey: "k", model: "m" });
     await backend.chat([{ role: "user", content: "hi" }]);
 
-    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    const body = JSON.parse(capturedInit?.body as string) as Record<string, unknown>;
     assert.equal("system" in body, false);
   });
 

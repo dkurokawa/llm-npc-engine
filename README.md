@@ -1,5 +1,7 @@
 # llm-npc-engine
 
+[![CI](https://github.com/dkurokawa/llm-npc-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/dkurokawa/llm-npc-engine/actions/workflows/ci.yml)
+
 NPCs that talk through an LLM, in a game whose progression is decided in code.
 
 The model speaks freely and lies convincingly. It never decides whether you have
@@ -33,6 +35,13 @@ Each thing a character knows carries a `requires` list. Until those facts hold,
 the text is simply absent from the prompt — the model is not instructed to keep
 a secret, it is never told the secret. This is what survives at 8B, where an
 instruction not to reveal something often does not.
+
+Once `requires` holds, whether the line actually enters the prompt splits in
+two. Knowledge with no `keywords` is background: it is always there. Knowledge
+with `keywords` waits for the player's line to contain one of them — checked as
+a plain substring match after case-folding, not by asking the model what it
+just said — and then stays disclosed for the rest of the conversation. Three
+greetings in a row unlock nothing; the player has to actually ask.
 
 ### Lies are told, not performed
 
@@ -82,20 +91,35 @@ line of dialogue that never unlocks.
 ## Layout
 
 ```
-src/core/   progression, disclosure, prompt building — no network, fully tested
+src/core/   progression, disclosure, prompt building, dialogue state — no network
 src/llm/    the three backends behind one interface
 src/cli/    a terminal front end; a browser one would replace only this
 ```
 
 ```bash
-pnpm test        # the rules, offline and deterministic
+pnpm test           # the rules, offline and deterministic
+pnpm test:coverage  # same, with node's built-in coverage report
 pnpm typecheck
+pnpm lint
 ```
 
-The tests include an exhaustive pass over every combination of a case's
-answers, asserting exactly one is accepted.
+`src/core/` and `src/llm/` run entirely offline — no test talks to a real
+model or a real network. The tests check, among other things:
 
-Runs on Node 22+ with no runtime dependencies.
+- disclosure only fires on a matching line, and stays fired afterward
+  (`state.test.ts`)
+- an exhaustive pass over every combination of a case's answers, asserting
+  exactly one is accepted (`state.test.ts`)
+- `world.json`/`npc.json` are rejected for a wrong type, an unknown key, a
+  duplicate id, or a keyword rule violation — not just a dangling reference
+  (`load.test.ts`)
+- a failed reply from the backend leaves history, facts, and a pending stage
+  direction untouched, and a retry still sees that directive (`dialogue.test.ts`)
+- each of the three backends builds the request its provider expects and
+  parses the reply back, against a mocked `fetch` (`src/llm/*.test.ts`)
+
+Runs on Node 22.18+ (the version type stripping needs no flag on), with one
+runtime dependency: zod, for validating scenario data on load.
 
 ## License
 

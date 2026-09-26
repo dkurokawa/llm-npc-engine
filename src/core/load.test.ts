@@ -98,7 +98,7 @@ describe("cross-reference checks", () => {
       { ...sample.world, solutions: [solution, { ...solution }] },
       sample.npcs,
     );
-    assert.ok(problems.some((p) => /duplicate solution id/.test(p)));
+    assert.ok(problems.some((p) => p.includes("duplicate solution id")));
   });
 
   test("a duplicate slot id within one solution is reported", () => {
@@ -111,7 +111,7 @@ describe("cross-reference checks", () => {
       },
       sample.npcs,
     );
-    assert.ok(problems.some((p) => /duplicate slot id/.test(p)));
+    assert.ok(problems.some((p) => p.includes("duplicate slot id")));
   });
 
   test("a duplicate knowledge id within one NPC is reported", () => {
@@ -120,7 +120,7 @@ describe("cross-reference checks", () => {
       ...sample.npcs,
       gareth: { ...gareth, knowledge: [gareth.knowledge[0]!, { ...gareth.knowledge[0]! }] },
     });
-    assert.ok(problems.some((p) => /duplicate knowledge id/.test(p)));
+    assert.ok(problems.some((p) => p.includes("duplicate knowledge id")));
   });
 
   test("a duplicate lie id within one NPC is reported", () => {
@@ -129,7 +129,7 @@ describe("cross-reference checks", () => {
       ...sample.npcs,
       martha: { ...martha, lies: [martha.lies[0]!, { ...martha.lies[0]! }] },
     });
-    assert.ok(problems.some((p) => /duplicate lie id/.test(p)));
+    assert.ok(problems.some((p) => p.includes("duplicate lie id")));
   });
 
   test("evidence with an empty acquired_by is rejected (it would start held)", () => {
@@ -166,7 +166,7 @@ describe("cross-reference checks", () => {
       ...sample.npcs,
       martha: { ...martha, lies: martha.lies.map((l) => ({ ...l, keywords: [] })) },
     });
-    assert.ok(problems.some((p) => /needs at least one keyword/.test(p)));
+    assert.ok(problems.some((p) => p.includes("needs at least one keyword")));
   });
 
   test("an empty-string keyword is rejected", () => {
@@ -178,7 +178,7 @@ describe("cross-reference checks", () => {
       ...sample.npcs,
       gareth: { ...gareth, knowledge: blank },
     });
-    assert.ok(problems.some((p) => /contains an empty keyword/.test(p)));
+    assert.ok(problems.some((p) => p.includes("contains an empty keyword")));
   });
 
   test("an unbreakable lie (no broken_by) is rejected", () => {
@@ -187,7 +187,7 @@ describe("cross-reference checks", () => {
       ...sample.npcs,
       martha: { ...martha, lies: martha.lies.map((l) => ({ ...l, broken_by: [] })) },
     });
-    assert.ok(problems.some((p) => /needs at least one broken_by evidence/.test(p)));
+    assert.ok(problems.some((p) => p.includes("needs at least one broken_by evidence")));
   });
 });
 

@@ -115,6 +115,10 @@ export const npcBookSchema = z.record(z.string(), npcSchema);
 // --- schema/type parity, checked at compile time --------------------------
 
 /** True iff `A` and `B` are assignable to each other in both directions. */
+// The single-use `T` below is deliberate: it forces the conditional to be
+// checked invariantly instead of distributing over unions, which is what
+// makes this an equality test rather than a two-way `extends` check.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
   ? true
   : false;

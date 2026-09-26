@@ -16,7 +16,7 @@ export interface AnthropicOptions {
 }
 
 interface AnthropicResponse {
-  content?: Array<{ type: string; text?: string }>;
+  content?: { type: string; text?: string }[];
   usage?: { output_tokens?: number };
 }
 
