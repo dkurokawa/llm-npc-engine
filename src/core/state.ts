@@ -172,6 +172,9 @@ export class GameState {
   findBreakingLie(npcId: NpcId, evidenceId: EvidenceId): Lie | undefined {
     const npc = this.scenario.npcs[npcId];
     if (!npc) return undefined;
+    // Evidence the player has not acquired breaks nothing, whichever caller
+    // passes its id — the CLI checks this too, but the rule lives here.
+    if (!this.holds(evidenceId)) return undefined;
 
     for (const lie of this.activeLies(npcId, npc)) {
       if (!lie.broken_by.includes(evidenceId)) continue;

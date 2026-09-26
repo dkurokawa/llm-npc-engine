@@ -261,6 +261,39 @@ describe("reachability", () => {
     );
     assert.ok(problems.some((p) => p.includes("evidence.receipt") && p.includes("unreachable")));
   });
+
+  // A fact that is declared (so cross-reference checks pass) but that nothing
+  // ever grants: anything requiring it can never be reached.
+  const withOrphanFact = () => ({
+    ...sample.world,
+    facts: { ...sample.world.facts, never_granted: { label: "誰も立てない fact" } },
+  });
+
+  test("a solution whose requires can never hold is rejected", () => {
+    const world = withOrphanFact();
+    const [sol, ...rest] = world.solutions;
+    const problems = validateScenario(
+      { ...world, solutions: [{ ...sol!, requires: ["never_granted"] }, ...rest] },
+      sample.npcs,
+    );
+    assert.ok(problems.some((p) => p.includes(`solutions.${sol!.id}`) && p.includes("unreachable")));
+  });
+
+  test("knowledge whose requires can never hold is rejected", () => {
+    const gareth = sample.npcs.gareth!;
+    const [first, ...rest] = gareth.knowledge;
+    const problems = validateScenario(withOrphanFact(), {
+      ...sample.npcs,
+      gareth: { ...gareth, knowledge: [{ ...first!, requires: ["never_granted"] }, ...rest] },
+    });
+    assert.ok(
+      problems.some((p) => p.includes(`npcs.gareth.knowledge.${first!.id}`) && p.includes("unreachable")),
+    );
+  });
+
+  test("the sample scenario has no unreachable entries", () => {
+    assert.deepEqual(validateScenario(sample.world, sample.npcs), []);
+  });
 });
 
 describe("loadScenario", () => {

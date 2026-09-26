@@ -201,6 +201,7 @@ describe("lies", () => {
   test("evidence breaks a lie that has been told, and grants its facts", () => {
     const state = fresh();
     const martha = sample.npcs.martha!;
+    state.grant(["found_receipt"]); // the receipt is in hand
     state.recordTurn("martha", martha, ASK_ALIBI);
 
     const verdict = state.present("martha", "receipt");
@@ -209,8 +210,21 @@ describe("lies", () => {
     assert.deepEqual(verdict.granted, ["martha_confessed"]);
   });
 
+  test("evidence the player does not hold breaks nothing", () => {
+    const state = fresh();
+    const martha = sample.npcs.martha!;
+    state.recordTurn("martha", martha, ASK_ALIBI);
+    assert.equal(state.holds("receipt"), false);
+
+    assert.equal(state.findBreakingLie("martha", "receipt"), undefined);
+    const verdict = state.present("martha", "receipt");
+    assert.equal(verdict.broken, false, "a lie fell to evidence never acquired");
+    assert.equal(state.has("martha_confessed"), false);
+  });
+
   test("a lie cannot be broken before the player has heard it", () => {
     const state = fresh();
+    state.grant(["found_receipt"]); // held, so only "not yet heard" can refuse it
     const verdict = state.present("martha", "receipt");
     assert.equal(verdict.broken, false, "evidence resolved a contradiction never established");
     assert.equal(state.has("martha_confessed"), false);
@@ -219,6 +233,7 @@ describe("lies", () => {
   test("a broken lie is not repeated", () => {
     const state = fresh();
     const martha = sample.npcs.martha!;
+    state.grant(["found_receipt"]);
     state.recordTurn("martha", martha, ASK_ALIBI);
     state.present("martha", "receipt");
 

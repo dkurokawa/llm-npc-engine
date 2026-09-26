@@ -86,8 +86,9 @@ Two files, no code: `world.json` for the case, `npc.json` for the cast.
 [`docs/schema.md`](docs/schema.md) walks through both, and
 [`scenarios/sample/`](scenarios/sample/) is a complete small mystery. Both files
 are checked on load, so a mistyped id fails immediately instead of becoming a
-line of dialogue that never unlocks — and so does a case with no way to reach
-some fact at all, like a circular requirement between two things.
+line of dialogue that never unlocks — and so does a case where some evidence,
+solution, or piece of knowledge can never be reached, like a circular
+requirement between two things.
 
 ## Layout
 
@@ -112,8 +113,9 @@ model or a real network. The tests check, among other things:
 - an exhaustive pass over every combination of a case's answers, asserting
   exactly one is accepted (`state.test.ts`)
 - `world.json`/`npc.json` are rejected for a wrong type, an unknown key, a
-  duplicate id, a keyword rule violation, or a fact/evidence that can never
-  actually be reached — not just a dangling reference (`load.test.ts`)
+  duplicate id, a keyword rule violation, or evidence / a solution / knowledge
+  that can never actually be reached — not just a dangling reference
+  (`load.test.ts`)
 - a failed reply from the backend leaves history and facts untouched, and a
   retry succeeds cleanly — including when the reply is an NPC reacting to a
   lie just broken by evidence, where a failure must leave the lie standing

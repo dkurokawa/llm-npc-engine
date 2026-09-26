@@ -28,11 +28,19 @@ export type ConfrontResult =
   | { broken: false }
   | { broken: true; lie: Lie; reply: string; granted: FactId[] };
 
+/**
+ * One player's conversation. Turns are strictly one at a time: a second
+ * `say()` / `confront()` while one is still waiting on the backend throws
+ * instead of racing it (two in flight would both read the same history and
+ * could both break the same lie). A front end that can double-submit should
+ * disable input until the pending turn settles.
+ */
 export class Dialogue {
   readonly #state: GameState;
   readonly #backend: LlmBackend;
   /** Conversation history per NPC, so each remembers its own thread. */
   readonly #histories = new Map<NpcId, ChatMessage[]>();
+  #busy = false;
 
   constructor(state: GameState, backend: LlmBackend) {
     this.#state = state;
@@ -46,7 +54,11 @@ export class Dialogue {
    * not the history, not `state`. A retry of the same line sees exactly the
    * situation the failed attempt saw.
    */
-  async say(npcId: NpcId, playerLine: string): Promise<SayResult> {
+  say(npcId: NpcId, playerLine: string): Promise<SayResult> {
+    return this.#oneAtATime(() => this.#say(npcId, playerLine));
+  }
+
+  async #say(npcId: NpcId, playerLine: string): Promise<SayResult> {
     const npc = this.#npc(npcId);
     const { system } = buildNpcPrompt(this.#state, npcId, npc, playerLine);
 
@@ -81,17 +93,17 @@ export class Dialogue {
    * answered, so a failed call leaves the lie standing, exactly as if
    * `/show` had never been tried.
    */
-  async confront(
+  confront(npcId: NpcId, evidenceId: EvidenceId, playerLine: string): Promise<ConfrontResult> {
+    return this.#oneAtATime(() => this.#confront(npcId, evidenceId, playerLine));
+  }
+
+  async #confront(
     npcId: NpcId,
     evidenceId: EvidenceId,
     playerLine: string,
   ): Promise<ConfrontResult> {
     const npc = this.#npc(npcId);
-    // Evidence the player hasn't acquired must not be usable to break a lie
-    // just because a caller happens to pass its id — `/show` already checks
-    // this, but the core API shouldn't rely on the CLI to enforce it.
-    if (!this.#state.holds(evidenceId)) return { broken: false };
-
+    // findBreakingLie() also refuses evidence the player does not hold.
     const lie = this.#state.findBreakingLie(npcId, evidenceId);
     if (!lie) return { broken: false };
 
@@ -131,6 +143,16 @@ export class Dialogue {
     this.#histories.set(npcId, history);
 
     return { broken: true, lie, reply, granted: [...turnGranted, ...presentGranted] };
+  }
+
+  async #oneAtATime<T>(turn: () => Promise<T>): Promise<T> {
+    if (this.#busy) throw new Error("a turn is already in progress");
+    this.#busy = true;
+    try {
+      return await turn();
+    } finally {
+      this.#busy = false;
+    }
   }
 
   #npc(npcId: NpcId): Npc {

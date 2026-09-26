@@ -37,6 +37,28 @@ class FakeBackend implements LlmBackend {
 }
 
 describe("Dialogue", () => {
+  test("a second turn while one is in flight is refused, not raced", async () => {
+    let release!: (r: ChatResult) => void;
+    const slow: LlmBackend = {
+      label: "slow",
+      chat: () => new Promise<ChatResult>((resolve) => (release = resolve)),
+    };
+    const state = new GameState(sample);
+    const dialogue = new Dialogue(state, slow);
+
+    const first = dialogue.say("gareth", "昨夜、怪しい客が泊まっていましたか？");
+    await assert.rejects(dialogue.say("gareth", "昨夜の客は？"), /already in progress/);
+    await assert.rejects(dialogue.confront("martha", "receipt", "これは？"), /already in progress/);
+
+    release({ content: "泊まったんじゃ", elapsedMs: 0 });
+    assert.deepEqual((await first).granted, ["saw_cloak"]);
+
+    // Once the first turn settles, the next one goes through normally.
+    const next = dialogue.say("gareth", "ほかには？");
+    release({ content: "それだけじゃ", elapsedMs: 0 });
+    assert.equal((await next).reply, "それだけじゃ");
+  });
+
   test("a successful reply advances history and the facts the line matched", async () => {
     const state = new GameState(sample);
     const backend = new FakeBackend("マントの男が泊まったんじゃ", "そのあとすぐ出て行った");
