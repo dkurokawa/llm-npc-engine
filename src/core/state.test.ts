@@ -13,7 +13,7 @@ import { before, describe, test } from "node:test";
 import { loadScenario } from "./load.ts";
 import { buildNpcPrompt } from "./prompt.ts";
 import { GameState } from "./state.ts";
-import type { Scenario } from "./types.ts";
+import type { Npc, Scenario } from "./types.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SAMPLE_DIR = path.join(here, "..", "..", "scenarios", "sample");
@@ -106,6 +106,50 @@ describe("knowledge disclosure", () => {
     // left_at_dawn requires saw_cloak, which has not been granted yet.
     const granted = state.recordTurn("gareth", gareth, ASK_WHEN_LEFT);
     assert.deepEqual(granted, []);
+    assert.equal(state.has("knows_departure"), false);
+  });
+
+  test("recordTurn decides every match against the turn's starting state, never a running one", () => {
+    // A minimal two-tier scenario: k2 requires the very fact k1 grants, and
+    // both share a keyword. If recordTurn granted while it iterated, the
+    // same line would disclose both in one turn — k2 would enter "disclosed"
+    // despite never having been part of the prompt this turn actually built
+    // (promptKnowledge() is a separate, unmutated read of the same snapshot).
+    const npc: Npc = {
+      name: "test npc",
+      role: "test role",
+      persona: { first_person: "わたし", speech: "" },
+      knowledge: [
+        { id: "k1", content: "k1 content", requires: [], keywords: ["共通語"], grants: ["f1"] },
+        { id: "k2", content: "k2 content", requires: ["f1"], keywords: ["共通語"], grants: ["f2"] },
+      ],
+      unknown: [],
+      lies: [],
+    };
+    const scenario: Scenario = { world: sample.world, npcs: { npc1: npc } };
+    const state = new GameState(scenario);
+
+    const granted = state.recordTurn("npc1", npc, "共通語について教えて");
+    assert.deepEqual(granted, ["f1"], "k2 must not be disclosed in the same turn its requirement was granted");
+    assert.equal(state.has("f2"), false);
+
+    // A later turn sees f1 already held from the start, so the same line now
+    // reaches k2 too.
+    const grantedNextTurn = state.recordTurn("npc1", npc, "共通語について教えて");
+    assert.deepEqual(grantedNextTurn, ["f2"]);
+  });
+
+  test("regression: a sample line matching two dependent keyword sets only discloses the first", () => {
+    // "昨夜の客はいつ出て行った？" matches cloak_man_stayed's keywords
+    // (昨夜, 客) *and* left_at_dawn's (いつ, 出て, 行った) in a single line,
+    // but left_at_dawn requires saw_cloak — which only cloak_man_stayed
+    // grants, and only as a result of this very call.
+    const state = fresh();
+    const gareth = sample.npcs.gareth!;
+    const line = "昨夜の客はいつ出て行った？";
+
+    const granted = state.recordTurn("gareth", gareth, line);
+    assert.deepEqual(granted, ["saw_cloak"]);
     assert.equal(state.has("knows_departure"), false);
   });
 

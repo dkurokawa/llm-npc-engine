@@ -125,27 +125,37 @@ export class GameState {
    * whose keywords it matched counts as told. Nothing here reads what the
    * model replied — only what the player asked determines what stuck.
    *
+   * Every match is decided against the state as it stood when this call
+   * began, *before* anything below grants a single fact. Granting inside the
+   * loop would let one entry's `grants` satisfy a second entry's `requires`
+   * in the same turn, disclosing something that was never actually in the
+   * prompt this turn's `promptKnowledge()` call built (e.g. a single line
+   * matching both `saw_cloak`'s and the `requires: ["saw_cloak"]` entry's
+   * keywords must only disclose the first).
+   *
    * Call this only after the backend has actually answered; a failed turn
    * should record nothing (see `src/core/dialogue.ts`).
    */
   recordTurn(npcId: NpcId, npc: Npc, playerLine: string): FactId[] {
-    const granted: FactId[] = [];
+    const newlyDisclosed = npc.knowledge.filter((k) => {
+      if (!k.keywords || k.keywords.length === 0) return false;
+      if (!this.hasAll(k.requires)) return false;
+      if (this.#disclosed.has(`${npcId}:${k.id}`)) return false;
+      return matchesAny(playerLine, k.keywords);
+    });
 
-    for (const k of npc.knowledge) {
-      if (!k.keywords || k.keywords.length === 0) continue;
-      if (!this.hasAll(k.requires)) continue;
-      const key = `${npcId}:${k.id}`;
-      if (this.#disclosed.has(key)) continue;
-      if (!matchesAny(playerLine, k.keywords)) continue;
-      this.#disclosed.add(key);
+    const newlyTold = this.activeLies(npcId, npc).filter((lie) => {
+      if (this.#liesTold.has(`${npcId}:${lie.id}`)) return false;
+      return matchesAny(playerLine, lie.keywords);
+    });
+
+    const granted: FactId[] = [];
+    for (const k of newlyDisclosed) {
+      this.#disclosed.add(`${npcId}:${k.id}`);
       granted.push(...this.grant(k.grants));
     }
-
-    for (const lie of this.activeLies(npcId, npc)) {
-      const key = `${npcId}:${lie.id}`;
-      if (this.#liesTold.has(key)) continue;
-      if (!matchesAny(playerLine, lie.keywords)) continue;
-      this.#liesTold.add(key);
+    for (const lie of newlyTold) {
+      this.#liesTold.add(`${npcId}:${lie.id}`);
       granted.push(...this.grant(lie.grants_on_told));
     }
 
