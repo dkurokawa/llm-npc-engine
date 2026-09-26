@@ -136,7 +136,7 @@ export class Dialogue {
     // part of the prompt actually sent (the same class of bug fixed in
     // recordTurn() itself — see its own doc comment).
     const turnGranted = this.#state.recordTurn(npcId, npc, playerLine);
-    const presentGranted = this.#state.present(npcId, evidenceId).granted;
+    const presentGranted = this.#state.breakLie(npcId, lie);
 
     history.push({ role: "user", content: playerLine });
     history.push({ role: "assistant", content: reply });

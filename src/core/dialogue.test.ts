@@ -37,6 +37,41 @@ class FakeBackend implements LlmBackend {
 }
 
 describe("Dialogue", () => {
+  test("confront breaks the lie it chose, even if its own line makes another breakable", async () => {
+    // Martha gets a second lie, earlier in the array, also broken by the
+    // receipt. It has not been told when /show starts, so alibi_lie is the one
+    // chosen — but the confrontation line itself matches the decoy's keywords,
+    // making it "told" mid-turn. A fresh lookup afterwards would pick the decoy.
+    const martha = sample.npcs.martha!;
+    const alibi = martha.lies[0]!;
+    const decoy = {
+      ...alibi,
+      id: "decoy_lie",
+      keywords: ["受取証"],
+      grants_on_told: [],
+      on_broken: { reaction: "…", grants: ["decoy_broken"] },
+    };
+    const scenario: Scenario = {
+      world: {
+        ...sample.world,
+        facts: { ...sample.world.facts, decoy_broken: { label: "decoy" } },
+      },
+      npcs: { ...sample.npcs, martha: { ...martha, lies: [decoy, alibi] } },
+    };
+    const state = new GameState(scenario);
+    state.grant(["found_receipt"]);
+    state.recordTurn("martha", scenario.npcs.martha!, "昨夜はどこにいた？");
+
+    const dialogue = new Dialogue(state, new FakeBackend("……認めるよ"));
+    const result = await dialogue.confront("martha", "receipt", "この受取証はどういうことだ");
+
+    assert.ok(result.broken);
+    assert.equal(result.lie.id, "alibi_lie");
+    assert.equal(state.isBroken("martha", "alibi_lie"), true);
+    assert.equal(state.isBroken("martha", "decoy_lie"), false, "a lie the model was never told about fell");
+    assert.equal(state.has("decoy_broken"), false);
+  });
+
   test("a second turn while one is in flight is refused, not raced", async () => {
     let release!: (r: ChatResult) => void;
     const slow: LlmBackend = {

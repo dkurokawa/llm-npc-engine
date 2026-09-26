@@ -193,13 +193,20 @@ export class GameState {
   present(npcId: NpcId, evidenceId: EvidenceId): PresentVerdict {
     const lie = this.findBreakingLie(npcId, evidenceId);
     if (!lie) return { broken: false, granted: [] };
+    return { broken: true, lie, granted: this.breakLie(npcId, lie) };
+  }
 
-    this.#liesBroken.add(`${npcId}:${lie.id}`);
-    return {
-      broken: true,
-      lie,
-      granted: this.grant(lie.on_broken.grants),
-    };
+  /**
+   * Breaks one specific lie that `findBreakingLie()` already chose. For a
+   * caller that picked the lie before some other state change (a turn that
+   * made a second lie "told"), so the lie the model was told about is the one
+   * that falls — not whichever a fresh lookup would find first.
+   */
+  breakLie(npcId: NpcId, lie: Lie): FactId[] {
+    const key = `${npcId}:${lie.id}`;
+    if (this.#liesBroken.has(key)) return [];
+    this.#liesBroken.add(key);
+    return this.grant(lie.on_broken.grants);
   }
 
   // --- inventory -----------------------------------------------------------
