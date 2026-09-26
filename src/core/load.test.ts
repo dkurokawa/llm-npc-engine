@@ -243,6 +243,26 @@ describe("cross-reference checks", () => {
   });
 });
 
+describe("reachability", () => {
+  test("a fact/evidence cycle is rejected as unreachable", () => {
+    // receipt now requires martha_confessed to acquire, but martha_confessed
+    // is only granted by breaking alibi_lie by presenting... receipt. Neither
+    // can ever be reached from an empty fact set — cross-reference checks
+    // alone can't see this, since every id involved genuinely exists.
+    const problems = validateScenario(
+      {
+        ...sample.world,
+        evidence: {
+          ...sample.world.evidence,
+          receipt: { ...sample.world.evidence.receipt!, acquired_by: ["martha_confessed"] },
+        },
+      },
+      sample.npcs,
+    );
+    assert.ok(problems.some((p) => p.includes("evidence.receipt") && p.includes("unreachable")));
+  });
+});
+
 describe("loadScenario", () => {
   test("loads and cross-checks the real sample directory", async () => {
     const scenario = await loadScenario(SAMPLE_DIR);

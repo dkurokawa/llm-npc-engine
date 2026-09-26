@@ -13,6 +13,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { checkReachability } from "./reachability.ts";
 import { npcBookSchema, worldSchema } from "./schema.ts";
 import type { NpcBook, Scenario, World } from "./types.ts";
 import type { z } from "zod";
@@ -179,9 +180,11 @@ interface ParseResult {
 }
 
 /**
- * Runs both passes: schema first, cross-references second. A schema failure
- * skips cross-checking entirely — ids and counts are meaningless to check
- * against a shape that was never confirmed to hold them.
+ * Runs three passes in order — schema, cross-references, reachability — each
+ * gating the next. A schema failure skips cross-checking entirely (ids and
+ * counts are meaningless to check against a shape never confirmed to hold
+ * them), and a cross-reference failure skips reachability the same way (a
+ * dangling reference would just look like an unreachable fact forever).
  */
 function parseScenario(worldInput: unknown, npcsInput: unknown): ParseResult {
   const worldResult = worldSchema.safeParse(worldInput);
@@ -194,8 +197,12 @@ function parseScenario(worldInput: unknown, npcsInput: unknown): ParseResult {
     return { problems };
   }
 
-  const problems = crossCheck(worldResult.data, npcsResult.data);
-  if (problems.length > 0) return { problems };
+  const crossProblems = crossCheck(worldResult.data, npcsResult.data);
+  if (crossProblems.length > 0) return { problems: crossProblems };
+
+  const reachabilityProblems = checkReachability(worldResult.data, npcsResult.data);
+  if (reachabilityProblems.length > 0) return { problems: reachabilityProblems };
+
   return { scenario: { world: worldResult.data, npcs: npcsResult.data }, problems: [] };
 }
 

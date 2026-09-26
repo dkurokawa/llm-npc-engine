@@ -246,8 +246,9 @@ martha.lies[*].broken_by に "receipt" が含まれるか？
 
 ### 5-1. 読み込み時に拒否されるもの
 
-`src/core/schema.ts`（zod, `.strict()`）と `src/core/load.ts` がこの順に検証する。
-形が壊れていれば ID の相互参照チェックは走らない（意味のある対象がまだ無いため）。
+`src/core/schema.ts`（zod, `.strict()`）→ `src/core/load.ts` の相互参照チェック →
+`src/core/reachability.ts` の到達可能性チェック、の順に検証する。前の段で問題があれば
+次の段は走らせない（形が壊れていれば ID の相互参照は無意味、参照が壊れていれば到達可能性も無意味）。
 
 **形（zod スキーマ、`.strict()`）:**
 
@@ -266,10 +267,17 @@ martha.lies[*].broken_by に "receipt" が含まれるか？
 - 同一 NPC 内の `knowledge.id` 重複、同一 NPC 内の `lie.id` 重複
 - `requires` / `grants` / `grants_on_told` / `on_broken.grants` が指す fact ID が存在しない
 - `evidence.acquired_by` が空（開始時から所持している扱いになってしまうため）
-- `slot.answer` が `slot.options` に含まれない、`slot.options` が2択未満
+- `slot.answer` が `slot.options` に含まれない、`slot.options` が2択未満、`slot.options` 内の重複
 - `lie.broken_by` が空（誰にも崩せない嘘になる）、`broken_by` が指す evidence ID が存在しない
 - `grants` を持つのに `keywords` が無い knowledge（§2-1: 一生開示されない）
-- `keywords` が空、または空文字を含む knowledge / lie
+- `keywords` が空配列、または空文字を含む knowledge / lie（省略＝背景知識と、書くなら1つ以上、の二択しかない）
+
+### 5-2. 到達可能性の検査
+
+相互参照が正しくても、空の状態から実際に辿り着けるとは限らない（例: 証拠 A の入手に fact B が要り、
+B は A を突きつけて嘘を崩さないと立たない、という循環）。`src/core/reachability.ts` が空の fact 集合
+から不動点まで到達可能な fact / 入手可能な証拠を計算し、到達不能な証拠・`requires` を満たせない
+solution・`requires` を満たせない knowledge（`grants` の有無を問わず）を problems に出す。
 
 ---
 
