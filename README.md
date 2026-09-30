@@ -66,6 +66,12 @@ $ pnpm play
 マーサ「え、雨具を借りたか……そのときは外に出てたはずなんだけど……」
 ```
 
+## Architecture
+
+![architecture](docs/architecture.svg)
+
+The LLM only produces speech. What it can say is gated by the scenario data: knowledge whose `requires` are unmet is never put in the prompt. Progression is a chain in code (evidence, `broken_by`, `grants`, `requires`), and nothing flows from the LLM into it.
+
 ## Backends
 
 One line in `.env` moves between a local model, any OpenAI-compatible provider,
